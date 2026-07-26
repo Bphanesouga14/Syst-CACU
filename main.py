@@ -157,7 +157,7 @@ Ce projet suit la **Clean Architecture** avec 4 couches :
 
 # Liste des origines autorisées à parler à ton API
 origins = [
-    "https://campuspro-front.bphanesouga.workers.dev",
+    "https://campuspro.bphanesouga.workers.dev",
     "http://localhost:5173", # Si tu testes aussi en local avec Vite
     "http://127.0.0.1:5173"
 ]
@@ -180,7 +180,7 @@ app.add_middleware(
  
  # ── CONFIGURATION CORS (OBLIGATOIRE POUR LE FRONT-END) ──
 
-    allow_origins=origins,  #settings.ALLOWED_ORIGINS,  # Autorise les URLs définies dans config.py
+    allow_origins=settings.ALLOWED_ORIGINS,  # Autorise les URLs définies dans config.py
     
     #modifié pour autoriser toutes les origines en développement
     #allow_origins=["*"],  # En gros : autorise tout le monde
