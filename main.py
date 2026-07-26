@@ -18,7 +18,8 @@
 # ============================================================
 
 # asynccontextmanager = pour gérer le cycle de vie de l'app
-from contextlib import asynccontextmanager
+
+'''from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
@@ -242,6 +243,136 @@ async def accueil():
 async def health_check():
     return {
         "statut":      "ok",
+        "base_active": db_session.source_active,
+    }'''
+
+
+
+
+
+
+# ============================================================
+#  FICHIER : main.py
+# ============================================================
+
+from contextlib import asynccontextmanager
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+# Importation de la configuration centrale
+from app.core.config import settings
+
+# Base de données & modèles
+from app.Infrastructure.database.models import Utilisateur
+from app.Infrastructure.database.session import initialiser_base_de_donnees, AsyncSessionLocal
+import app.Infrastructure.database.session as db_session
+
+# Handlers d'erreurs & Service de relance
+from app.Presentation.error_handlers import enregistrer_handlers
+from app.Infrastructure.services.relance_service import envoyer_relances
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
+
+# Routeurs
+from app.Presentation.routes.etudiant_routes import router as etudiant_router
+from app.Presentation.routes.paiement_routes import router as paiement_router
+from app.Presentation.routes.import_routes import router as import_router
+from app.Presentation.routes.specialite_routes import router as specialite_router
+from app.Presentation.routes.calendrier_routes import router as calendrier_router
+from app.Presentation.routes.dashboard_routes import router as dashboard_router
+from app.Presentation.routes.auth_routes import router as auth_router
+from app.Presentation.routes.notification_routes import router as notification_router
+from app.Presentation.routes.profil_routes import router as profil_router
+from app.Presentation.routes.etudiant_photo_routes import router as photo_router
+from app.Presentation.routes.presence_routes import router as presence_router
+from app.Presentation.routes.qrcode_routes import router as qrcode_router
+from app.Presentation.routes.auth_2fa_routes import router as auth_2fa_router
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    print("🚀 Démarrage de CampusPro...")
+    await initialiser_base_de_donnees()
+
+    async def job_relances():
+        print("\n⏰ Lancement des relances automatiques...")
+        async with AsyncSessionLocal() as db:
+            resultat = await envoyer_relances(db)
+        print(f"✅ Relances terminées : {resultat['envoyes']} envoyées, {resultat['erreurs']} erreurs")
+
+    scheduler = AsyncIOScheduler(timezone="Africa/Douala")
+    scheduler.add_job(
+        job_relances,
+        CronTrigger(hour=20, minute=0),
+        id="relances_paiements",
+        name="Relances paiements en retard",
+        replace_existing=True,
+    )
+    scheduler.start()
+    print("✅ Scheduler démarré — relances chaque jour à 20h00")
+
+    yield
+
+    scheduler.shutdown()
+    if db_session.engine:
+        await db_session.engine.dispose()
+    print("👋 Arrêt de CampusPro.")
+
+
+app = FastAPI(
+    title=settings.APP_TITLE,
+    version=settings.APP_VERSION,
+    description="LGS - Logiciel de Gestion Scolaire",
+    lifespan=lifespan,
+    docs_url="/docs",
+    redoc_url="/redoc",
+)
+
+# ============================================================
+#  MIDDLEWARE CORS
+# ============================================================
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.ALLOWED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Handlers d'erreurs
+enregistrer_handlers(app)
+
+# Branchement des routeurs
+app.include_router(auth_2fa_router, prefix="/api/v1")
+app.include_router(auth_router, prefix="/api/v1")
+app.include_router(etudiant_router, prefix="/api/v1")
+app.include_router(paiement_router, prefix="/api/v1")
+app.include_router(import_router, prefix="/api/v1")
+app.include_router(specialite_router, prefix="/api/v1")
+app.include_router(calendrier_router, prefix="/api/v1")
+app.include_router(dashboard_router, prefix="/api/v1")
+app.include_router(notification_router, prefix="/api/v1")
+app.include_router(profil_router, prefix="/api/v1")
+app.include_router(photo_router, prefix="/api/v1")
+app.include_router(presence_router, prefix="/api/v1")
+app.include_router(qrcode_router, prefix="/api/v1")
+
+
+@app.get("/", tags=["Santé"])
+async def accueil():
+    return {
+        "application": settings.APP_TITLE,
+        "version": settings.APP_VERSION,
+        "statut": "en ligne ✅",
+        "base_active": db_session.source_active,
+        "documentation": "/docs",
+    }
+
+
+@app.get("/health", tags=["Santé"])
+async def health_check():
+    return {
+        "statut": "ok",
         "base_active": db_session.source_active,
     }
 
